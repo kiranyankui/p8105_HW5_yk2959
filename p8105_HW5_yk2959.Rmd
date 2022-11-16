@@ -1,0 +1,97 @@
+---
+title: "p8105_HW5_yk2959"
+author: "Kiran Kui"
+date: "2022-11-12"
+output: github_document
+---
+
+```{r load libraries}
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(stringr)
+```
+
+# Problem 2
+
+```{r}
+homicide_df = read_csv("./data/homicide-data.csv") %>%
+  janitor::clean_names() 
+
+skimr::skim(homicide_df)
+```
+
+I have imported the homicide dataset from the github repository and tidied the names of the variables in the dataset. 
+
+## Brief introduction of the raw homicide dataset 
+
+The raw dataset contains `r nrow(homicide_df)` rows and `r ncol(homicide_df)` columns, with each row representing a single record of homicide in 50 large U.S. cities. 
+
+Variables include, date of homicide, victim first and last name, victims' race, age, sex and the city/state that the homicide was located, as well as the lattitude and longitude of the homicide location, given in `r colnames(homicide_df)`. 
+
+```{r}
+
+homicide_df_clean_1 = homicide_df %>% 
+  unite(city_state, c(city, state), sep = ", ", remove = FALSE) %>% 
+  group_by(city_state) %>% 
+  summarise(
+    total_homicide = sum(!is.na(uid)))
+
+homicide_df_clean_2 = homicide_df %>% 
+  mutate(
+  unsolved = ifelse(
+  disposition %in% c('Closed without arrest', 'Open/No arrest'), 1, 0)) %>% 
+  unite(city_state, c(city, state), sep = ", ", remove = FALSE) %>% 
+  group_by(city_state, unsolved) %>% 
+  filter(unsolved == 1) %>% 
+  summarise(total_unsolved = sum(!is.na(unsolved))) %>% 
+  select(-unsolved)
+
+homicide_df_clean = merge(homicide_df_clean_1, homicide_df_clean_2, by='city_state', all.x=TRUE) %>% 
+  drop_na(total_unsolved)
+
+```
+I have created a city_state variable (e.g. “Baltimore, MD”) and then summarize within cities to obtain the total number of homicides and the number of unsolved homicides. 
+
+```{r}
+prop.test(
+  homicide_df_clean %>%  filter(city_state == "Baltimore, MD") %>% pull(total_unsolved),
+  homicide_df_clean %>%  filter(city_state == "Baltimore, MD") %>% pull(total_homicide)) %>% 
+  broom::tidy()
+  
+```
+
+I used the prop.test function to estimate the proportion of homicides that are unsolved, then saved the output of prop.test as an R object, and apply the broom::tidy to this object and pull the estimated proportion and confidence intervals from the resulting tidy dataframe. 
+
+The estimated proportion of unsolved homicides is 0.646 and the confidence interval is (0.628, 0.663). 
+
+```{r}
+homicide_df_clean_tidy = 
+  homicide_df_clean %>% 
+  mutate(
+    prop_test = map2(.x = total_unsolved, .y = total_homicide, ~ prop.test(x = .x, n = .y)),
+    tidy_prop_test = map(.x = prop_test, ~ broom::tidy(.x))) %>%
+  select(-prop_test) %>% 
+  unnest(tidy_prop_test) %>% 
+  select(city_state, estimate, conf.low,conf.high)
+
+homicide_plot = homicide_df_clean_tidy %>% 
+  mutate(city_state = fct_reorder(city_state, estimate)) %>% 
+  ggplot(aes(x = city_state, y = estimate)) +
+  geom_point() + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high))
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) + 
+  labs(
+    title = "Showing the estimates of unsolved homicides and CIs",
+    x = "city/state", 
+    y = "estimates of proportion of unsolved homicide "
+  )
+
+  
+homicide_plot
+
+```
+ 
+
