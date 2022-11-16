@@ -11,6 +11,8 @@ library(readxl)
 library(dplyr)
 library(purrr)
 library(ggplot2)
+library(p8105.datasets)
+
 ```
 
 
